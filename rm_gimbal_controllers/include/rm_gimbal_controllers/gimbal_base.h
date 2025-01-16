@@ -37,38 +37,29 @@
 
 #pragma once
 
-#include <effort_controllers/joint_velocity_controller.h>
+#include <effort_controllers/joint_position_controller.h>
 #include <controller_interface/multi_interface_controller.h>
 #include <hardware_interface/joint_command_interface.h>
-#include <hardware_interface/imu_sensor_interface.h>
 #include <rm_common/hardware_interface/robot_state_interface.h>
-#include <rm_common/filters/filters.h>
+#include <hardware_interface/imu_sensor_interface.h>
+#include <realtime_tools/realtime_publisher.h>
 #include <rm_msgs/GimbalCmd.h>
 #include <rm_msgs/TrackData.h>
 #include <rm_msgs/GimbalDesError.h>
-#include <rm_msgs/GimbalPosState.h>
-#include <rm_gimbal_controllers/GimbalBaseConfig.h>
+#include <dynamic_reconfigure/server.h>
 #include <rm_gimbal_controllers/bullet_solver.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <Eigen/Eigen>
-#include <control_toolbox/pid.h>
-#include <urdf/model.h>
-#include <dynamic_reconfigure/server.h>
-#include <realtime_tools/realtime_publisher.h>
+#include <rm_common/filters/filters.h>
 
 namespace rm_gimbal_controllers
 {
-struct GimbalConfig
-{
-  double yaw_k_v_, pitch_k_v_, k_chassis_vel_;
-  double accel_pitch_{}, accel_yaw_{};
-};
-
 class ChassisVel
 {
 public:
   ChassisVel(const ros::NodeHandle& nh)
   {
+    // 构造两个三维均值滤波器
     double num_data;
     nh.param("num_data", num_data, 20.0);
     nh.param("debug", is_debug_, true);
@@ -82,21 +73,28 @@ public:
   }
   std::shared_ptr<Vector3WithFilter<double>> linear_;
   std::shared_ptr<Vector3WithFilter<double>> angular_;
+  // 调用update会更新chassis_vel
   void update(double linear_vel[3], double angular_vel[3], double period)
   {
+    // 时间少于0，出现错误，没更新时间则底盘速度无法准确更新
     if (period < 0)
       return;
     if (period > 0.1)
     {
+      // 给线速度和角速度的容器清零
       linear_->clear();
       angular_->clear();
     }
+    // 用原始的速度数据输入到滤波器中，使用时只需要调用接口就可以获得滤波后的速度
     linear_->input(linear_vel);
     angular_->input(angular_vel);
+    // 下面是将速度发布出去，用于debug
     if (is_debug_ && loop_count_ % 10 == 0)
     {
+      // real_pub_能上锁
       if (real_pub_->trylock())
       {
+        //
         real_pub_->msg_.linear.x = linear_vel[0];
         real_pub_->msg_.linear.y = linear_vel[1];
         real_pub_->msg_.linear.z = linear_vel[2];
@@ -104,10 +102,13 @@ public:
         real_pub_->msg_.angular.y = angular_vel[1];
         real_pub_->msg_.angular.z = angular_vel[2];
 
+        // 把锁打开和publish出去
         real_pub_->unlockAndPublish();
       }
+      // filtered_pub_上锁成功
       if (filtered_pub_->trylock())
       {
+        // 用（过滤的）filtered_pub_读取线速度和角速度
         filtered_pub_->msg_.linear.x = linear_->x();
         filtered_pub_->msg_.linear.y = linear_->y();
         filtered_pub_->msg_.linear.z = linear_->z();
@@ -115,6 +116,7 @@ public:
         filtered_pub_->msg_.angular.y = angular_->y();
         filtered_pub_->msg_.angular.z = angular_->z();
 
+        // 把锁打开和publish出去
         filtered_pub_->unlockAndPublish();
       }
     }
@@ -142,7 +144,6 @@ private:
   void rate(const ros::Time& time, const ros::Duration& period);
   void track(const ros::Time& time);
   void direct(const ros::Time& time);
-  void traj(const ros::Time& time);
   bool setDesIntoLimit(double& real_des, double current_des, double base2gimbal_current_des,
                        const urdf::JointConstSharedPtr& joint_urdf);
   void moveJoint(const ros::Time& time, const ros::Duration& period);
@@ -150,33 +151,27 @@ private:
   void updateChassisVel();
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
-  void reconfigCB(rm_gimbal_controllers::GimbalBaseConfig& config, uint32_t);
 
   rm_control::RobotStateHandle robot_state_handle_;
   hardware_interface::ImuSensorHandle imu_sensor_handle_;
   bool has_imu_ = true;
-  effort_controllers::JointVelocityController ctrl_yaw_, ctrl_pitch_;
-  control_toolbox::Pid pid_yaw_pos_, pid_pitch_pos_;
+  effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
 
   std::shared_ptr<BulletSolver> bullet_solver_;
 
   // ROS Interface
   ros::Time last_publish_time_{};
-  std::unique_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalPosState>> yaw_pos_state_pub_, pitch_pos_state_pub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
   realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
   realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
-  urdf::JointConstSharedPtr pitch_joint_urdf_, yaw_joint_urdf_;
 
   rm_msgs::GimbalCmd cmd_gimbal_;
   rm_msgs::TrackData data_track_;
   std::string gimbal_des_frame_id_{}, imu_name_{};
   double publish_rate_{};
   bool state_changed_{};
-  bool pitch_des_in_limit_{}, yaw_des_in_limit_{};
-  int loop_count_{};
 
   // Transform
   geometry_msgs::TransformStamped odom2gimbal_des_, odom2pitch_, odom2base_, last_odom2base_;
@@ -186,25 +181,27 @@ private:
   double gravity_;
   bool enable_gravity_compensation_;
 
+  // Input feedforward
+  double yaw_k_v_;
+  double pitch_k_v_;
+
+  // Resistance compensation
+  double yaw_resistance_;
+  double velocity_saturation_point_, effort_saturation_point_;
+
   // Chassis
+  double k_chassis_vel_;
+  // 创建智能指针，可用指针指向整个<ChassisVel>的public成员
   std::shared_ptr<ChassisVel> chassis_vel_;
-
-  bool dynamic_reconfig_initialized_{};
-  GimbalConfig config_{};
-  realtime_tools::RealtimeBuffer<GimbalConfig> config_rt_buffer_;
-  dynamic_reconfigure::Server<rm_gimbal_controllers::GimbalBaseConfig>* d_srv_{};
-
-  RampFilter<double>*ramp_rate_pitch_{}, *ramp_rate_yaw_{};
 
   enum
   {
     RATE,
     TRACK,
-    DIRECT,
-    TRAJ
+    DIRECT
   };
+  // 默认状态为RATE
   int state_ = RATE;
-  bool start_ = false;
 };
 
 }  // namespace rm_gimbal_controllers
