@@ -152,56 +152,59 @@ private:
   void commandCB(const rm_msgs::GimbalCmdConstPtr& msg);
   void trackCB(const rm_msgs::TrackDataConstPtr& msg);
 
-  rm_control::RobotStateHandle robot_state_handle_;
-  hardware_interface::ImuSensorHandle imu_sensor_handle_;
-  bool has_imu_ = true;
-  effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_;
+  // 硬件接口和状态句柄
+  rm_control::RobotStateHandle robot_state_handle_; // 访问机器人状态
+  hardware_interface::ImuSensorHandle imu_sensor_handle_; // 访问惯性测量单元(IMU)数据
+  bool has_imu_ = true; // 是否启用IMU
+  effort_controllers::JointPositionController ctrl_yaw_, ctrl_pitch_; // Yaw 和 Pitch 的位置控制器
 
-  std::shared_ptr<BulletSolver> bullet_solver_;
+  std::shared_ptr<BulletSolver> bullet_solver_; // 处理子弹动力学计算的智能指针
 
-  // ROS Interface
-  ros::Time last_publish_time_{};
-  std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_;
+  // ROS Interface(ROS接口)
+  ros::Time last_publish_time_{}; // 上次发布数据的时间戳
+  std::shared_ptr<realtime_tools::RealtimePublisher<rm_msgs::GimbalDesError>> error_pub_; // 实时发布器，发布云台误差信息
   ros::Subscriber cmd_gimbal_sub_;
   ros::Subscriber data_track_sub_;
-  realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_;
-  realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_;
+  realtime_tools::RealtimeBuffer<rm_msgs::GimbalCmd> cmd_rt_buffer_; // 实时缓冲区，存储命令
+  realtime_tools::RealtimeBuffer<rm_msgs::TrackData> track_rt_buffer_; // 实时缓冲区，存储跟踪数据
 
-  rm_msgs::GimbalCmd cmd_gimbal_;
-  rm_msgs::TrackData data_track_;
-  std::string gimbal_des_frame_id_{}, imu_name_{};
-  double publish_rate_{};
-  bool state_changed_{};
+  rm_msgs::GimbalCmd cmd_gimbal_; // 存储最新的云台命令
+  rm_msgs::TrackData data_track_; // 存储最新的跟踪数据
+  std::string gimbal_des_frame_id_{}, imu_name_{}; // 云台目标帧ID 和 IMU名称
+  double publish_rate_{}; // 发布频率
+  bool state_changed_{}; // 控制器状态是否发生变化
 
-  // Transform
-  geometry_msgs::TransformStamped odom2gimbal_des_, odom2pitch_, odom2base_, last_odom2base_;
+  // Transform(变换矩阵)
+  geometry_msgs::TransformStamped odom2gimbal_des_, odom2pitch_, odom2base_, last_odom2base_; // 坐标系变换矩阵
+                                                                                              // odom2gimbal_des_: odom 到 gimbal_des_ 的变换
+                                                                                              // last_odom2base_: 上一次 odom2base_ 的值
 
-  // Gravity Compensation
-  geometry_msgs::Vector3 mass_origin_;
-  double gravity_;
-  bool enable_gravity_compensation_;
+  // Gravity Compensation(重力补偿参数)
+  geometry_msgs::Vector3 mass_origin_; // 质心原点的位置
+  double gravity_; // 重力加速度
+  bool enable_gravity_compensation_; // 是否启用重力补偿
 
-  // Input feedforward
-  double yaw_k_v_;
-  double pitch_k_v_;
+  // Input feedforward(输入前馈参数)
+  double yaw_k_v_; // yaw方向的速度增益系数
+  double pitch_k_v_; // pitch方向的速度增益系数
 
-  // Resistance compensation
-  double yaw_resistance_;
-  double velocity_saturation_point_, effort_saturation_point_;
+  // Resistance compensation(阻力补偿参数)
+  double yaw_resistance_; // yaw方向的阻力系数
+  double velocity_saturation_point_, effort_saturation_point_; // 速度和努力饱和点阈值(用于限制关节的最大速度和努力)
 
-  // Chassis
-  double k_chassis_vel_;
+  // Chassis(底盘相关参数)
+  double k_chassis_vel_; // 底盘速度的比例系数
   // 创建智能指针，可用指针指向整个<ChassisVel>的public成员
-  std::shared_ptr<ChassisVel> chassis_vel_;
+  std::shared_ptr<ChassisVel> chassis_vel_; // 处理底盘速度的对象(智能指针)
 
   enum
-  {
+  { // 三种控制模式
     RATE,
     TRACK,
     DIRECT
   };
   // 默认状态为RATE
-  int state_ = RATE;
+  int state_ = RATE; // state_:当前控制模式，默认为 RATE
 };
 
 }  // namespace rm_gimbal_controllers

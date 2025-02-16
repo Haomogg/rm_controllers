@@ -53,6 +53,12 @@ struct Config
 {
   double resistance_coff_qd_10, resistance_coff_qd_15, resistance_coff_qd_16, resistance_coff_qd_18,
       resistance_coff_qd_30, g, delay, dt, timeout;
+  // resistance_coff_qd_10: 阻尼系数 qd_10
+  // resistance_coff_qd_15: 阻尼系数 qd_15,后面以此类推
+  // g:重力加速度
+  // delay:延迟时间
+  // dt:时间步长
+  // timeout:超时时间
 };
 
 class BulletSolver
@@ -81,21 +87,21 @@ public:
   ~BulletSolver() = default;
 
 private:
-  std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_desire_pub_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_real_pub_;
-  realtime_tools::RealtimeBuffer<Config> config_rt_buffer_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_desire_pub_; // 发布期望的目标位置标记
+  std::shared_ptr<realtime_tools::RealtimePublisher<visualization_msgs::Marker>> path_real_pub_; // 发布实际的目标位置标记
+  realtime_tools::RealtimeBuffer<Config> config_rt_buffer_; // 实时缓冲区，存储config_的实时副本
   dynamic_reconfigure::Server<rm_gimbal_controllers::BulletSolverConfig>* d_srv_{};
   Config config_{};
-  double max_track_target_vel_;
-  bool dynamic_reconfig_initialized_{};
-  double output_yaw_{}, output_pitch_{};
-  double bullet_speed_{}, resistance_coff_{};
-  int selected_armor_;
-  bool track_target_;
+  double max_track_target_vel_; // 最大跟随敌方目标的速度
+  bool dynamic_reconfig_initialized_{}; // 动态重配置是否已经初始化的标志
+  double output_yaw_{}, output_pitch_{}; // 输出的yaw，输出的pitch
+  double bullet_speed_{}, resistance_coff_{}; // 子弹速度，阻力系数
+  int selected_armor_; // 选中的装甲板编号
+  bool track_target_; // 是否正在跟踪目标. true表示跟踪模式(低速)，false表示中心模式(高速)
 
-  geometry_msgs::Point target_pos_{};
-  double fly_time_;
-  visualization_msgs::Marker marker_desire_;
-  visualization_msgs::Marker marker_real_;
+  geometry_msgs::Point target_pos_{}; // 目标位置
+  double fly_time_; // 子弹飞行时间
+  visualization_msgs::Marker marker_desire_; // 期望目标位置的可视化标记
+  visualization_msgs::Marker marker_real_; // 实际目标位置的可视化标记
 };
 }  // namespace rm_gimbal_controllers
